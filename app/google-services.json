@@ -1,0 +1,55 @@
+{
+  "project_info": {
+    "project_number": "586618655082",
+    "firebase_url": "https://pinpin-a69b3.firebaseio.com",
+    "project_id": "pinpin-a69b3",
+    "storage_bucket": "pinpin-a69b3.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:586618655082:android:868e3b16a55ac24c",
+        "android_client_info": {
+          "package_name": "com.example.android.pinpin"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "586618655082-9p7vmeu3m8ini7fuq2rbpfdf2v97b683.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.android.pinpin",
+            "certificate_hash": "53a59cbdb692675156c1e7c46450b99171ef3ed3"
+          }
+        },
+        {
+          "client_id": "586618655082-2c0t7r7lppm3sudlufkd6vvg48o3d2ig.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCkDYsgf5cG0nUEMI3U2KzJtwG3M4JYgKo"
+        }
+      ],
+      "services": {
+        "analytics_service": {
+          "status": 1
+        },
+        "appinvite_service": {
+          "status": 2,
+          "other_platform_oauth_client": [
+            {
+              "client_id": "586618655082-2c0t7r7lppm3sudlufkd6vvg48o3d2ig.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        },
+        "ads_service": {
+          "status": 2
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
