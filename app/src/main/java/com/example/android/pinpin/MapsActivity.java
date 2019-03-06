@@ -8,6 +8,7 @@ import android.graphics.Color;
 import android.location.Location;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.CountDownTimer;
 import android.os.Handler;
 import android.os.Looper;
 import android.support.annotation.NonNull;
@@ -32,11 +33,11 @@ import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.LatLng;
-import com.google.android.gms.maps.model.LatLngBounds;
-import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.gms.maps.model.PolygonOptions;
 import com.google.android.gms.maps.model.Polygon;
+import com.google.android.gms.maps.model.Circle;
+import com.google.android.gms.maps.model.CircleOptions;
 import com.google.maps.android.PolyUtil;
 
 import java.io.BufferedReader;
@@ -56,9 +57,15 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     private GoogleApiClient client;
     private LatLng currLoc;
     private static final int REQUEST_LOCATION_CODE = 99;
+    private boolean canPin = true;
+    private long pinCooldown;
     Set<Pin> dbCoords = new HashSet<>();
     Set<OverlayArea> areaCoords = new HashSet<>();
     Set<Polygon> validAreas = new HashSet<>();
+    private static Circle currLocCircle;
+    private static final double VALID_RADIUS_METERS = 21.0;
+    private static final double PIN_VIEW_RAD_METERS = 50.0;
+    private static final int PIN_TIMER_SEC = 60;
 
     // Reads in the coordinates from the database and adds/removes pins from the map
     final Handler timerHandler = new Handler();
@@ -126,6 +133,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                                 // Clear all markers on the map first
                                 mMap.clear();
                                 addMarkers();
+                                highlightAreas();
                             }
                         };
                         mainHandler.post(myRunnable);
@@ -180,8 +188,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     private void addMarkers() {
         for (Pin p : dbCoords) {
             if (currLoc != null) {
-                // Only show Pins within 20 km of user.
-                if (20 >= getDistance(currLoc.latitude, currLoc.longitude, p.coords.latitude, p.coords.longitude)) {
+                // Only show Pins within a certain radius of user.
+                if (PIN_VIEW_RAD_METERS >= getDistance(currLoc.latitude, currLoc.longitude, p.coords.latitude, p.coords.longitude)) {
                     MarkerOptions mo = new MarkerOptions();
                     mo.position(p.coords);
 
@@ -207,9 +215,28 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
     // Highlight valid areas to place pins
     private void highlightAreas() {
+        // Temporary values w/o database
+        // Downtown SLO
         LatLng l1 = new LatLng(35.275774, -120.667078);
         LatLng l2 = new LatLng(35.281857, -120.664997);
         LatLng l3 = new LatLng(35.279882, -120.658361);
+
+        // Google HQ
+        LatLng l4 = new LatLng(37.423270, -122.084100);
+        LatLng l5 = new LatLng(37.419606, -122.084347);
+        LatLng l6 = new LatLng(37.422017, -122.087298);
+
+        // Cal Poly
+        LatLng l7 = new LatLng(35.303562, -120.667387);
+        LatLng l8 = new LatLng(35.296452, -120.664426);
+        LatLng l9 = new LatLng(35.299534, -120.655928);
+        LatLng l10 = new LatLng(35.304122, -120.658932);
+
+        // Foothill
+        LatLng l11 = new LatLng(35.298238, -120.680862);
+        LatLng l12 = new LatLng(35.290848, -120.678416);
+        LatLng l13 = new LatLng(35.290462, -120.667645);
+        LatLng l14 = new LatLng(35.295786, -120.668889);
 
         PolygonOptions highlight = new PolygonOptions();
         highlight.add(l1, l2, l3);
@@ -217,6 +244,30 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         highlight.fillColor(Color.argb(35, 0, 0, 255));
 
         Polygon polygon = mMap.addPolygon(highlight);
+        validAreas.add(polygon);
+
+        PolygonOptions highlight2 = new PolygonOptions();
+        highlight2.add(l4, l5, l6);
+        highlight2.strokeWidth(10);
+        highlight2.fillColor(Color.argb(35, 0, 0, 255));
+
+        polygon = mMap.addPolygon(highlight2);
+        validAreas.add(polygon);
+
+        PolygonOptions highlight3 = new PolygonOptions();
+        highlight3.add(l7, l8, l9, l10);
+        highlight3.strokeWidth(10);
+        highlight3.fillColor(Color.argb(35, 0, 0, 255));
+
+        polygon = mMap.addPolygon(highlight3);
+        validAreas.add(polygon);
+
+        PolygonOptions highlight4 = new PolygonOptions();
+        highlight4.add(l11, l12, l13, l14);
+        highlight4.strokeWidth(10);
+        highlight4.fillColor(Color.argb(35, 0, 0, 255));
+
+        polygon = mMap.addPolygon(highlight4);
         validAreas.add(polygon);
 
         /*
@@ -273,6 +324,48 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         }
     }
 
+    public Boolean checkValidPin(AlertDialog.Builder builder, AlertDialog alertDialog, final LatLng pin) {
+        // Cooldown timer condition
+        if (!canPin) {
+            builder.setTitle("Recently placed pin");
+            builder.setMessage("Must wait " + pinCooldown + " seconds before placing a new pin");
+            builder.setNeutralButton("Clear", null);
+            alertDialog = builder.create();
+            alertDialog.show();
+            return false;
+        }
+
+        // Distance from user current position condition
+        if (getDistance(currLoc.latitude, currLoc.longitude, pin.latitude, pin.longitude) >= VALID_RADIUS_METERS / 1000) {
+            builder.setTitle("Invalid location");
+            builder.setMessage("Pins must be placed in a 0.04km radius");
+            builder.setNeutralButton("Clear", null);
+            alertDialog = builder.create();
+            alertDialog.show();
+            return false;
+        }
+
+        // If the pin is not located in a valid area, do not allow placing of pin
+        boolean goodArea = false;
+
+        for (Polygon a : validAreas) {
+            if (PolyUtil.containsLocation(pin, a.getPoints(), false)) {
+                goodArea = true;
+            }
+        }
+
+        if (!goodArea) {
+            builder.setTitle("Invalid location");
+            builder.setMessage("Pins can only be placed within the blue highlighted areas");
+            builder.setNeutralButton("Clear", null);
+            alertDialog = builder.create();
+            alertDialog.show();
+            return false;
+        }
+
+        return true;
+    }
+
     /**
      * Manipulates the map once available.
      * This callback is triggered when the map is ready to be used.
@@ -285,7 +378,6 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     @Override
     public void onMapReady(final GoogleMap googleMap) {
         mMap = googleMap;
-        highlightAreas();
         final String need[] = {"Food"};
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
@@ -298,21 +390,10 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             @Override
             public void onMapClick(final LatLng pin) {
                 AlertDialog.Builder builder = new AlertDialog.Builder(MapsActivity.this);
-                AlertDialog alertDialog;
+                AlertDialog alertDialog = builder.create();
 
-                // If the pin is not located in a valid area, do not allow placing of pin
-                /*
-                for (Polygon a : validAreas) {
-                    if (!PolyUtil.containsLocation(pin, a.getPoints(), false)) {
-                        builder.setTitle("Invalid location");
-                        builder.setMessage("Pins can only be placed within the blue highlighted areas");
-                        builder.setNeutralButton("Clear", null);
-                        alertDialog = builder.create();
-                        alertDialog.show();
-                        return;
-                    }
-                }
-                */
+                // Do not continue if pin is not valid for placement
+                if (!checkValidPin(builder, alertDialog, pin)) { return; }
 
                 final MarkerOptions mo = new MarkerOptions();
                 mo.position(pin);
@@ -359,6 +440,19 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                            }
                        });
 
+                       canPin = false;
+
+                       new CountDownTimer(1000 * PIN_TIMER_SEC, 1000) {
+
+                           public void onTick(long millisUntilFinished) {
+                               pinCooldown = millisUntilFinished / 1000;
+                           }
+
+                           public void onFinish() {
+                               canPin = true;
+                           }
+                       }.start();
+
                        thread.start();
                    }
                 });
@@ -391,17 +485,31 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 }
 
                 final Pin closest = temp;
+                String pinOptions[] = {"Need Provided", "Flag Pin"};
 
                 AlertDialog.Builder builder = new AlertDialog.Builder(MapsActivity.this);
-                builder.setTitle("Do you want to flag this Pin?");
-                builder.setMessage("Flag this Pin if the person is not at the location anymore.");
-                builder.setPositiveButton("Yes", new DialogInterface.OnClickListener() {
+                builder.setTitle("What would you like to do?");
+                builder.setItems(pinOptions, new DialogInterface.OnClickListener() {
                     @Override
-                    public void onClick(DialogInterface dialogInterface, int i) {
+                    public void onClick(DialogInterface dialogInterface, int which) {
+                        boolean removePin = false;
+
+                        switch(which) {
+                            case 0:
+                                removePin = true;
+                                break;
+                            case 1:
+                                removePin = true;
+                                break;
+                        }
+
                         // Remove the flagged marker from the map.
-                        mMap.clear();
-                        dbCoords.remove(closest);
-                        addMarkers();
+                        if (removePin) {
+                            mMap.clear();
+                            dbCoords.remove(closest);
+                            addMarkers();
+                            highlightAreas();
+                        }
 
                         // Remove the flagged marker from the database.
                         final String delete = "http://129.65.221.101/php/deleteFlaggedEntry.php?gps=" + closest.coords.latitude +
@@ -424,7 +532,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
                     }
                 });
-                builder.setNegativeButton("No", null);
+                builder.setNegativeButton("Cancel", null);
 
                 AlertDialog alertDialog = builder.create();
                 alertDialog.show();
