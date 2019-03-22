@@ -2,7 +2,10 @@ package com.example.android.pinpin;
 
 import android.Manifest;
 import android.app.AlertDialog;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
 import android.content.DialogInterface;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.location.Location;
@@ -13,10 +16,16 @@ import android.os.Handler;
 import android.os.Looper;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
+import android.support.v7.app.ActionBar;
 import android.support.v4.app.ActivityCompat;
+import android.support.v7.app.AppCompatActivity;
 import android.support.v4.app.FragmentActivity;
 import android.support.v4.content.ContextCompat;
+import android.support.v4.app.NotificationCompat;
+import android.support.v4.app.NotificationManagerCompat;
+import android.view.Window;
 import android.widget.Toast;
+
 
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
@@ -64,8 +73,26 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     Set<Polygon> validAreas = new HashSet<>();
     private static Circle currLocCircle;
     private static final double VALID_RADIUS_METERS = 21.0;
-    private static final double PIN_VIEW_RAD_METERS = 50.0;
+    private static final double PIN_VIEW_RAD_METERS = 500.0;
     private static final int PIN_TIMER_SEC = 60;
+    private static final String CHANNEL_ID = "notification_id";
+    private static final int NOTIFICATION_ID = 3000;
+
+    private void createNotificationChannel() {
+        // Create the NotificationChannel, but only on API 26+ because
+        // the NotificationChannel class is new and not in the support library
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            CharSequence name = getString(R.string.channel_name);
+            String description = getString(R.string.channel_description);
+            int importance = NotificationManager.IMPORTANCE_DEFAULT;
+            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, name, importance);
+            channel.setDescription(description);
+            // Register the channel with the system; you can't change the importance
+            // or other notification behaviors after this
+            NotificationManager notificationManager = getSystemService(NotificationManager.class);
+            notificationManager.createNotificationChannel(channel);
+        }
+    }
 
     // Reads in the coordinates from the database and adds/removes pins from the map
     final Handler timerHandler = new Handler();
@@ -133,7 +160,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                                 // Clear all markers on the map first
                                 mMap.clear();
                                 addMarkers();
-                                highlightAreas();
+                                createNotificationChannel();
+                                //highlightAreas();
                             }
                         };
                         mainHandler.post(myRunnable);
@@ -178,7 +206,6 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 System.out.println("GOOGLE PLACES ERROR");
             }
         });
-
 
         // Read in coordinates from the database
         timerHandler.postDelayed(timerRunnable, 0);
@@ -335,6 +362,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             return false;
         }
 
+        /*
         // Distance from user current position condition
         if (getDistance(currLoc.latitude, currLoc.longitude, pin.latitude, pin.longitude) >= VALID_RADIUS_METERS / 1000) {
             builder.setTitle("Invalid location");
@@ -354,6 +382,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             }
         }
 
+
         if (!goodArea) {
             builder.setTitle("Invalid location");
             builder.setMessage("Pins can only be placed within the blue highlighted areas");
@@ -362,6 +391,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             alertDialog.show();
             return false;
         }
+        */
 
         return true;
     }
@@ -459,7 +489,6 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
                 alertDialog = builder.create();
                 alertDialog.show();
-
             }
         });
 
@@ -557,6 +586,21 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         // Move map to current location
         mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(currLoc, 17));
 
+        for (Pin p : dbCoords) {
+            if (currLoc != null) {
+                // Only show Pins within a certain radius of user.
+                if (PIN_VIEW_RAD_METERS >= getDistance(currLoc.latitude, currLoc.longitude, p.coords.latitude, p.coords.longitude))
+                    createNotificationChannel();
+                    NotificationManagerCompat notificationManager = NotificationManagerCompat.from(this);
+                    NotificationCompat.Builder noti_builder = new NotificationCompat.Builder(this, CHANNEL_ID)
+                            .setSmallIcon(R.drawable.notification)
+                            .setContentTitle("Pin Nearby")
+                            .setContentText("A pin has been detected nearby you. Open app to see location?")
+                            .setPriority(NotificationCompat.PRIORITY_DEFAULT);
+                    notificationManager.notify(NOTIFICATION_ID, noti_builder.build());
+            }
+        }
+
         if (client != null) {
             LocationServices.FusedLocationApi.removeLocationUpdates(client, this);
         }
@@ -569,6 +613,9 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         locationRequest.setInterval(1000); //1000 milliseconds
         locationRequest.setFastestInterval(1000);
         locationRequest.setPriority(LocationRequest.PRIORITY_BALANCED_POWER_ACCURACY);
+
+        Intent intent = new Intent(this, MyLocationService.class);
+        startService(intent);
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
             LocationServices.FusedLocationApi.requestLocationUpdates(client, locationRequest, this);

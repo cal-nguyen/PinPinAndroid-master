@@ -1,6 +1,8 @@
 <resources>
     <string name="app_name">PinPin</string>
-    <string name="title_activity_maps">Map</string>
+    <string name="title_activity_maps">PinPin</string>
     <string name="pin_time">0</string>
     <string name="refresh_description">Refreshes the pins on the map</string>
+    <string name="channel_name">Need Discovered</string>
+    <string name="channel_description">Open the app to see the location</string>
 </resources>
