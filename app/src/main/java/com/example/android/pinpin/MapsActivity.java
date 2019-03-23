@@ -75,6 +75,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     private static final double VALID_RADIUS_METERS = 21.0;
     private static final double PIN_VIEW_RAD_METERS = 500.0;
     private static final int PIN_TIMER_SEC = 60;
+    private static final double MIN_CLICK_DIST = 0.03;
     private static final String CHANNEL_ID = "notification_id";
     private static final int NOTIFICATION_ID = 3000;
 
@@ -120,7 +121,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                                 Double lng = Double.parseDouble(coords[1]);
                                 LatLng l = new LatLng(lat, lng);
 
-                                Pin p = new Pin(l, coords[2]);
+                                Pin p = new Pin(l, coords[2], Long.parseLong(coords[3]));
 
                                 if (!dbCoords.contains(p)) {
                                     dbCoords.add(p);
@@ -509,15 +510,18 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 }
 
                 // If the user long clicked too far away, dont do anything.
-                if (shortestDist > 0.03) {
+                if (shortestDist > MIN_CLICK_DIST) {
                     return;
                 }
 
                 final Pin closest = temp;
-                String pinOptions[] = {"Need Provided", "Flag Pin"};
+                String pinOptions[] = {"Need Provided - Remove Pin", "Flag Pin"};
+
+                // Calculate how long the pin has been placed in minutes
+                long closestDuration = (System.currentTimeMillis() / 1000 - closest.timePlaced) / 60;
 
                 AlertDialog.Builder builder = new AlertDialog.Builder(MapsActivity.this);
-                builder.setTitle("What would you like to do?");
+                builder.setTitle("Pin placed " + closestDuration + " minutes ago. What would you like to do?");
                 builder.setItems(pinOptions, new DialogInterface.OnClickListener() {
                     @Override
                     public void onClick(DialogInterface dialogInterface, int which) {

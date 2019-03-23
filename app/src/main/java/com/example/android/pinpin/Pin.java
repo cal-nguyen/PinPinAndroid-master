@@ -5,10 +5,12 @@ import com.google.android.gms.maps.model.LatLng;
 public class Pin {
     LatLng coords;
     String need;
+    long timePlaced;
 
-    public Pin(LatLng coords, String need) {
+    public Pin(LatLng coords, String need, long timePlaced) {
         this.coords = coords;
         this.need = need;
+        this.timePlaced = timePlaced;
     }
 
     @Override
