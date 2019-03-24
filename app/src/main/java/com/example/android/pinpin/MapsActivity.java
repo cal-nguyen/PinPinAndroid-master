@@ -67,7 +67,6 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     private long pinCooldown;
     private NotificationManagerCompat notificationManager;
     Set<Pin> dbCoords = new HashSet<>();
-    Set<OverlayArea> areaCoords = new HashSet<>();
     Set<Polygon> validAreas = new HashSet<>();
     private static Circle currLocCircle;
     private static final double VALID_RADIUS_METERS = 21.0;
@@ -122,7 +121,6 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                                 // Clear all markers on the map first
                                 mMap.clear();
                                 addMarkers();
-
                             }
                         };
                         mainHandler.post(myRunnable);
@@ -295,17 +293,6 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
         polygon = mMap.addPolygon(highlight4);
         validAreas.add(polygon);
-
-        /*
-        for (OverlayArea a : areaCoords) {
-            l1 = a.coords1;
-            l2 = a.coords2;
-            l3 = a.coords3;
-
-            highlight.add(l1, l2, l3);
-            mMap.addPolygon(highlight);
-        }
-        */
     }
 
     private double degreesToRadians(double degrees) {
