@@ -2,6 +2,7 @@ package com.example.android.pinpin;
 
 import com.google.android.gms.maps.model.LatLng;
 
+// Used for limiting the possible locations that a pin can be placed
 public class OverlayArea {
     LatLng coords1, coords2, coords3;
 

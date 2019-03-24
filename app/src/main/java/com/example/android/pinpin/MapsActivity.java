@@ -2,8 +2,7 @@ package com.example.android.pinpin;
 
 import android.Manifest;
 import android.app.AlertDialog;
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -16,16 +15,12 @@ import android.os.Handler;
 import android.os.Looper;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
-import android.support.v7.app.ActionBar;
 import android.support.v4.app.ActivityCompat;
-import android.support.v7.app.AppCompatActivity;
 import android.support.v4.app.FragmentActivity;
 import android.support.v4.content.ContextCompat;
 import android.support.v4.app.NotificationCompat;
 import android.support.v4.app.NotificationManagerCompat;
-import android.view.Window;
 import android.widget.Toast;
-
 
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
@@ -67,7 +62,10 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     private LatLng currLoc;
     private static final int REQUEST_LOCATION_CODE = 99;
     private boolean canPin = true;
+    private boolean pinAdded = false;
+    private boolean canNotify = true;
     private long pinCooldown;
+    private NotificationManagerCompat notificationManager;
     Set<Pin> dbCoords = new HashSet<>();
     Set<OverlayArea> areaCoords = new HashSet<>();
     Set<Polygon> validAreas = new HashSet<>();
@@ -75,25 +73,10 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     private static final double VALID_RADIUS_METERS = 21.0;
     private static final double PIN_VIEW_RAD_METERS = 500.0;
     private static final int PIN_TIMER_SEC = 60;
+    private static final int NOTIFY_TIMER_SEC = 600;
     private static final double MIN_CLICK_DIST = 0.03;
     private static final String CHANNEL_ID = "notification_id";
     private static final int NOTIFICATION_ID = 3000;
-
-    private void createNotificationChannel() {
-        // Create the NotificationChannel, but only on API 26+ because
-        // the NotificationChannel class is new and not in the support library
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            CharSequence name = getString(R.string.channel_name);
-            String description = getString(R.string.channel_description);
-            int importance = NotificationManager.IMPORTANCE_DEFAULT;
-            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, name, importance);
-            channel.setDescription(description);
-            // Register the channel with the system; you can't change the importance
-            // or other notification behaviors after this
-            NotificationManager notificationManager = getSystemService(NotificationManager.class);
-            notificationManager.createNotificationChannel(channel);
-        }
-    }
 
     // Reads in the coordinates from the database and adds/removes pins from the map
     final Handler timerHandler = new Handler();
@@ -131,28 +114,6 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                             }
                         }
 
-                        // Read in each overlay area coordinates from database
-                        /*
-                        for (String line; (line = reader.readLine()) != null;) {
-                            // Separate the given line by whitespace
-                            String[] coords = line.split("\\s");
-
-                            try {
-                                LatLng l1 = new LatLng(Double.parseDouble(coords[0]), Double.parseDouble(coords[1]));
-                                LatLng l2 = new LatLng(Double.parseDouble(coords[2]), Double.parseDouble(coords[5]));
-                                LatLng l3 = new LatLng(Double.parseDouble(coords[4]), Double.parseDouble(coords[6]));
-
-                                OverlayArea a = new OverlayArea(l1, l2, l3);
-
-                                if (!areaCoords.contains(a)) {
-                                    areaCoords.add(a);
-                                }
-                            } catch (NumberFormatException e) {
-                                System.out.println("The coord in the database is not formatted correctly: " + line);
-                            }
-                        }
-                        */
-
                         // Have to add and remove markers from map on main thread
                         Handler mainHandler = new Handler(Looper.getMainLooper());
                         Runnable myRunnable = new Runnable() {
@@ -161,8 +122,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                                 // Clear all markers on the map first
                                 mMap.clear();
                                 addMarkers();
-                                createNotificationChannel();
-                                //highlightAreas();
+
                             }
                         };
                         mainHandler.post(myRunnable);
@@ -208,8 +168,28 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             }
         });
 
+        // Set to notification manager initialized in NotificationInitialize
+        notificationManager = NotificationManagerCompat.from(this);
+
         // Read in coordinates from the database
         timerHandler.postDelayed(timerRunnable, 0);
+    }
+
+    // Creates a notification and places in the device's System tray
+    private void sendNotification() {
+        NotificationCompat.Builder notification = new NotificationCompat.Builder(this, CHANNEL_ID)
+                .setSmallIcon(R.drawable.notification)
+                .setContentTitle("Pin Nearby")
+                .setContentText("A pin has been detected nearby you. Open app to see location?")
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT);
+        notification.setAutoCancel(true);
+
+        Intent intent = new Intent(this, MapsActivity.class);
+        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0,
+                intent, PendingIntent.FLAG_UPDATE_CURRENT);
+        notification.setContentIntent(pendingIntent);
+
+        notificationManager.notify(NOTIFICATION_ID, notification.build());
     }
 
     // Adds all the markers from the database onto the map
@@ -236,8 +216,26 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                             break;
                     }
                     mMap.addMarker(mo);
+                    pinAdded = true;
                 }
             }
+        }
+
+        // Send a notification to the tray that a marker appeared nearby
+        if (pinAdded && canNotify) {
+            sendNotification();
+            pinAdded = false;
+            canNotify = false;
+
+            // Cooldown before allowing another notification
+            new CountDownTimer(1000 * NOTIFY_TIMER_SEC, 1000) {
+
+                public void onTick(long millisUntilFinished) {}
+
+                public void onFinish() {
+                    canNotify = true;
+                }
+            }.start();
         }
     }
 
@@ -589,21 +587,6 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
         // Move map to current location
         mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(currLoc, 17));
-
-        for (Pin p : dbCoords) {
-            if (currLoc != null) {
-                // Only show Pins within a certain radius of user.
-                if (PIN_VIEW_RAD_METERS >= getDistance(currLoc.latitude, currLoc.longitude, p.coords.latitude, p.coords.longitude))
-                    createNotificationChannel();
-                    NotificationManagerCompat notificationManager = NotificationManagerCompat.from(this);
-                    NotificationCompat.Builder noti_builder = new NotificationCompat.Builder(this, CHANNEL_ID)
-                            .setSmallIcon(R.drawable.notification)
-                            .setContentTitle("Pin Nearby")
-                            .setContentText("A pin has been detected nearby you. Open app to see location?")
-                            .setPriority(NotificationCompat.PRIORITY_DEFAULT);
-                    notificationManager.notify(NOTIFICATION_ID, noti_builder.build());
-            }
-        }
 
         if (client != null) {
             LocationServices.FusedLocationApi.removeLocationUpdates(client, this);
