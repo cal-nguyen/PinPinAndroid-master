@@ -24,7 +24,6 @@ import android.util.Log;
 import android.widget.Toast;
 
 import com.google.android.gms.common.ConnectionResult;
-import com.google.android.gms.common.GooglePlayServicesNotAvailableException;
 import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.common.api.Status;
 import com.google.android.gms.location.LocationListener;
@@ -52,7 +51,9 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.URL;
 import java.net.URLConnection;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 public class MapsActivity extends FragmentActivity implements OnMapReadyCallback,
@@ -70,12 +71,13 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     private long pinCooldown;
     private NotificationManagerCompat notificationManager;
     Set<Pin> dbCoords = new HashSet<>();
+    Set<NotifiedPin> notifiedPins = new HashSet<>();
     Set<Polygon> validAreas = new HashSet<>();
     private static Circle currLocCircle;
     private static final double VALID_RADIUS_METERS = 21.0;
     private static final double PIN_VIEW_RAD_METERS = 500.0;
     private static final int PIN_TIMER_SEC = 60;
-    private static final int NOTIFY_TIMER_SEC = 600;
+    private static final long PIN_NOTIFIED_DURATION_MIN = 120;
     private static final double MIN_CLICK_DIST = 0.03;
     private static final String CHANNEL_ID = "notification_id";
     private static final int NOTIFICATION_ID = 3000;
@@ -193,6 +195,23 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         notificationManager.notify(NOTIFICATION_ID, notification.build());
     }
 
+    // If a pin that is notified passes a certain duration, remove it from the list of notified pins
+    private void checkNotifiedPins() {
+        List<NotifiedPin> oldPins = new ArrayList<>();
+        long curT = System.currentTimeMillis();
+
+        for (NotifiedPin p : notifiedPins) {
+            long pinT = p.getTimeMilli() +
+                    PIN_NOTIFIED_DURATION_MIN * 60 * 1000;
+            if (System.currentTimeMillis() >= p.getTimeMilli() +
+                    PIN_NOTIFIED_DURATION_MIN * 60 * 1000) {
+                oldPins.add(p);
+            }
+        }
+
+        notifiedPins.removeAll(oldPins);
+    }
+
     // Adds all the markers from the database onto the map
     private void addMarkers() {
         for (Pin p : dbCoords) {
@@ -217,26 +236,22 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                             break;
                     }
                     mMap.addMarker(mo);
-                    pinAdded = true;
+
+                    NotifiedPin temp = new NotifiedPin(p, System.currentTimeMillis());
+                    if(!notifiedPins.contains(temp)) {
+                        notifiedPins.add(temp);
+                        pinAdded = true;
+                    }
                 }
             }
         }
 
+        checkNotifiedPins();
+
         // Send a notification to the tray that a marker appeared nearby
-        if (pinAdded && canNotify) {
+        if (pinAdded) {
             sendNotification();
             pinAdded = false;
-            canNotify = false;
-
-            // Cooldown before allowing another notification
-            new CountDownTimer(1000 * NOTIFY_TIMER_SEC, 1000) {
-
-                public void onTick(long millisUntilFinished) {}
-
-                public void onFinish() {
-                    canNotify = true;
-                }
-            }.start();
         }
     }
 
